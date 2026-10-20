@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SYSTEM CRITICAL</title>
+    <style>
+        body {
+            background-color: white;
+            color: black;
+            font-family: "Courier New", Courier, monospace;
+            font-weight: bold;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        button {
+            padding: 20px 50px;
+            font-size: 26px;
+            font-weight: bold;
+            cursor: pointer;
+            border: 4px solid black;
+            background: white;
+            box-shadow: 8px 8px 0px black;
+            transition: 0.1s;
+        }
+        button:hover {
+            background: black;
+            color: white;
+            transform: translate(-2px, -2px);
+            box-shadow: 10px 10px 0px #555;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- На странице осталась исключительно кнопка запуска -->
+    <button id="launcher" onclick="startSimulation()">СТАРТ</button>
+
+    <script>
+        const openWindows = []; 
+        let audioCtx, noiseNode;
+
+        // Генерация программного режущего белого шума
+        function startWhiteNoise() {
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const bufferSize = 2 * audioCtx.sampleRate;
+                const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const output = noiseBuffer.getChannelData(0);
+                
+                for (let i = 0; i < bufferSize; i++) {
+                    output[i] = Math.random() * 2 - 1;
+                }
+
+                noiseNode = audioCtx.createBufferSource();
+                noiseNode.buffer = noiseBuffer;
+                noiseNode.loop = true;
+                
+                noiseNode.connect(audioCtx.destination);
+                noiseNode.start();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // Внутренний код для каждого летающего мини-окна
+        function getWindowContent() {
+            return `
+                <html>
+                <head>
+                    <title>you are an idiot!</title>
+                    <style>
+                        body {
+                            margin: 0; background-color: white; color: black;
+                            display: flex; justify-content: center; align-items: center;
+                            height: 100vh; font-family: "Courier New", Courier, monospace; 
+                            font-size: 22px; font-weight: bold; text-align: center;
+                            overflow: hidden; user-select: none; padding: 10px;
+                            box-sizing: border-box;
+                        }
+                        .invert { background-color: black; color: white; }
+                    </style>
+                </head>
+                <body>
+                    <div>you are an idiot!</div>
+                    <script>
+                        // Быстрая черно-белая инверсия
+                        setInterval(() => {
+                            document.body.classList.toggle('invert');
+                        }, 80);
+
+                        window.onbeforeunload = function() {
+                            localStorage.setItem('kill_idiot_sim', Date.now());
+                        };
+                    <\/script>
+                </body>
+                </html>
+            `;
+        }
+
+        function startSimulation() {
+            startWhiteNoise();
+
+            // Полностью убираем кнопку с экрана после клика, чтобы остался пустой белый фон
+            document.getElementById('launcher').style.display = 'none';
+
+            localStorage.removeItem('kill_idiot_sim');
+
+            const screenW = window.screen.availWidth;
+            const screenH = window.screen.availHeight;
+
+            // Создаем 12 летающих окон со случайными скоростями
+            for (let i = 0; i < 12; i++) {
+                const winW = 200; 
+                const winH = 200; 
+
+                const left = Math.random() * (screenW - winW);
+                const top = Math.random() * (screenH - winH);
+
+                const dx = (Math.random() > 0.5 ? 1 : -1) * (Math.random() * 4 + 10);
+                const dy = (Math.random() > 0.5 ? 1 : -1) * (Math.random() * 4 + 10);
+
+                const newWin = window.open("", "_blank", `width=${winW},height=${winH},left=${left},top=${top},menubar=no,status=no,toolbar=no,scrollbars=no,resizable=yes`);
+                
+                if (newWin) {
+                    newWin.document.write(getWindowContent());
+                    newWin.document.close();
+
+                    openWindows.push({
+                        ref: newWin,
+                        x: left,
+                        y: top,
+                        w: winW,
+                        h: winH,
+                        dx: dx,
+                        dy: dy
+                    });
+                }
+            }
+
+            // Плавное перемещение окон (60 FPS)
+            const physicsInterval = setInterval(() => {
+                let shouldCloseEverything = false;
+
+                if (localStorage.getItem('kill_idiot_sim')) {
+                    shouldCloseEverything = true;
+                }
+
+                openWindows.forEach(win => {
+                    if (win.ref.closed) {
+                        shouldCloseEverything = true;
+                        return;
+                    }
+
+                    if (!shouldCloseEverything) {
+                        win.x += win.dx;
+                        win.y += win.dy;
+
+                        if (win.x <= 0 || win.x >= (screenW - win.w)) win.dx = -win.dx;
+                        if (win.y <= 0 || win.y >= (screenH - win.h)) win.dy = -win.dy;
+
+                        win.ref.moveTo(win.x, win.y);
+                    }
+                });
+
+                // Тотальное закрытие при закрытии любого окна
+                if (shouldCloseEverything) {
+                    clearInterval(physicsInterval);
+                    if (noiseNode) noiseNode.stop(); 
+                    openWindows.forEach(win => {
+                        if (!win.ref.closed) win.ref.close();
+                    });
+                }
+            }, 16);
+        }
+
+        // Если закрыть главную пустую страницу — закроются и все летающие окна
+        window.onbeforeunload = function() {
+            localStorage.setItem('kill_idiot_sim', Date.now());
+            openWindows.forEach(win => {
+                if (!win.ref.closed) win.ref.close();
+            });
+        };
+    </script>
+</body>
+</html>
